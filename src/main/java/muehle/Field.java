@@ -49,8 +49,7 @@ public class Field extends ImageView {
     }
     }
     public void removeFigure(){
-        figure = null;
-        this.setImage(new Image(this.getClass().getResource("emptyField.png").toString()));
+        this.setFigure(null);
     }
 
 
@@ -81,5 +80,9 @@ public class Field extends ImageView {
                 xPosition == field.xPosition &&
                 yPosition == field.yPosition &&
                 parentRectangle == field.parentRectangle;
+    }
+
+    public Figure getFigure() {
+        return figure;
     }
 }

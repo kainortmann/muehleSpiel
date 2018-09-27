@@ -4,7 +4,6 @@ import javafx.application.Application;
 import javafx.beans.property.DoubleProperty;
 import javafx.beans.property.SimpleDoubleProperty;
 import javafx.scene.Scene;
-import javafx.scene.image.Image;
 import javafx.scene.layout.Pane;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.Line;
@@ -16,6 +15,7 @@ import muehle.enums.YPosition;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
+import java.util.stream.Collectors;
 
 
 public class Controller extends Application{
@@ -29,8 +29,17 @@ public class Controller extends Application{
     List<ResizableRectangle> optionHighlightingRectangles;
     List<Field> currentMoveOptions;
     Field currentlySelectedField;
+    List<Player> players;
+    Player currentPlayer;
+    boolean gameInitialiiziationDone;
+    private boolean currentPlayerHasThreeInARow;
 
     @Override public void init() {
+        players = new ArrayList<>();
+        players.add(new Player(MuehleColor.WHITE));
+        players.add(new Player(MuehleColor.BLACK));
+        currentPlayer = players.get(0);
+        gameInitialiiziationDone = false;
     }
 
     @Override
@@ -42,16 +51,13 @@ public class Controller extends Application{
 
         //add 4 rectangles, since the maximum amount of move options is 4
         optionHighlightingRectangles = new ArrayList<>();
-        optionHighlightingRectangles.add(createRactangle());
-        optionHighlightingRectangles.add(createRactangle());
-        optionHighlightingRectangles.add(createRactangle());
-        optionHighlightingRectangles.add(createRactangle());
-        optionHighlightingRectangles.forEach(resizableRectangle -> {
+        for (int i=1; i<= 24; i++){
+            ResizableRectangle resizableRectangle = createRactangle();
+            optionHighlightingRectangles.add(resizableRectangle);
             resizableRectangle.setVisible(false);
             root.getChildren().add(resizableRectangle);
             resizableRectangle.toBack();
-        });
-
+        }
 
         outerRectangle = createRactangle(RectanglePosition.OUTSIDE);
         outerRectangle.widthProperty().bind(root.widthProperty().subtract(outerRectanglePadding));
@@ -119,9 +125,6 @@ public class Controller extends Application{
             bindFieldToPosition(field);
             root.getChildren().add(field);
             field.toFront();
-            if(field.getYPositionOnImaginaryGrid() == 1 && field.getXPositionOnImaginaryGrid()==3){
-                field.setFigure(new Figure(MuehleColor.BLACK));
-            }
         }
 
 
@@ -197,30 +200,94 @@ public class Controller extends Application{
 
 
         field.setOnMouseClicked(event -> {
-            if (!field.isEmpty()) {
-                selectionHighlightingRectangle.xProperty().bind(field.xProperty());
-                selectionHighlightingRectangle.yProperty().bind(field.yProperty());
-                selectionHighlightingRectangle.setVisible(true);
+            if(gameInitialiiziationDone) {
+                if(!field.isEmpty() && currentPlayerHasThreeInARow){
+                    MuehleColor opponentOfCuurentPlayerColor = (currentPlayer.getColor()== MuehleColor.WHITE) ? MuehleColor.BLACK : MuehleColor.WHITE;
+                    if(field.getFigure().getColor() == opponentOfCuurentPlayerColor){
+                        field.removeFigure();
+                        currentMoveOptions.clear();
+                        optionHighlightingRectangles.forEach(rect -> rect.setVisible(false));
+                        currentPlayerHasThreeInARow=false;
+                        togglePlayer();
+                    }
+                }else if (!field.isEmpty() && field.getFigure().getColor().equals(currentPlayer.getColor())) {
+                    selectionHighlightingRectangle.xProperty().bind(field.xProperty());
+                    selectionHighlightingRectangle.yProperty().bind(field.yProperty());
+                    selectionHighlightingRectangle.setVisible(true);
 
-                currentlySelectedField = field;
-                highlightOptions(field);
+                    currentlySelectedField = field;
+                    if(Board.getInstance().getAllFields().stream().filter(f -> !f.isEmpty()).filter(f -> f.getFigure().getColor() == field.getFigure().getColor()).count() <4){
+                        currentMoveOptions = Board.getInstance().getAllFields().stream().filter(f -> f.isEmpty()).collect(Collectors.toList());
+                    }else {
+                        currentMoveOptions = Util.getMoveOptions(field);
+                    }
+                    highlightMoveOptions();
 
-            }else if (currentMoveOptions.contains(field)) {
-                currentlySelectedField.moveFigureTo(field);
-                currentMoveOptions.clear();
-                currentlySelectedField = null;
-                optionHighlightingRectangles.forEach(rect -> rect.setVisible(false));
-                selectionHighlightingRectangle.setVisible(false);
+                } else if (currentMoveOptions.contains(field)) {
+                    currentlySelectedField.moveFigureTo(field);
+                    currentMoveOptions.clear();
+                    if (Util.checkForThreeInARow(field) == true){
+                        currentPlayerHasThreeInARow = true;
+                        currentMoveOptions = Board.getInstance().getAllFields().stream().filter(f -> !f.isEmpty()).collect(Collectors.toList());
+                        currentMoveOptions = currentMoveOptions.stream().filter(f -> !f.getFigure().getColor().equals(currentPlayer.getColor())).collect(Collectors.toList());
+                        highlightMoveOptions();
+                        selectionHighlightingRectangle.setVisible(false);
+                        currentlySelectedField = null;
+                    }else {
+                        currentlySelectedField = null;
+                        optionHighlightingRectangles.forEach(rect -> rect.setVisible(false));
+                        selectionHighlightingRectangle.setVisible(false);
+                        togglePlayer();
+                    }
+
+                }
             }
+            else if(field.isEmpty()) {
+                if(currentPlayer.hasFiguresLeft() && !currentPlayerHasThreeInARow) {
+                    currentPlayer.placeFigureOnField(field);
+                    if(Util.checkForThreeInARow(field) == true){
+                        currentPlayerHasThreeInARow = true;
+                        currentMoveOptions = Board.getInstance().getAllFields().stream().filter(f -> !f.isEmpty()).collect(Collectors.toList());
+                        currentMoveOptions = currentMoveOptions.stream().filter(f -> !f.getFigure().getColor().equals(currentPlayer.getColor())).collect(Collectors.toList());
+                        highlightMoveOptions();
+                    }else {
+                        togglePlayer();
+                    }
+                }
+                boolean allPlayerOutOfFigures = true;
+                for (Player player : players) {
+                    allPlayerOutOfFigures &= !player.hasFiguresLeft();
+                }
+                if (allPlayerOutOfFigures){
+                    gameInitialiiziationDone = true;
+                }
+
+            }
+            else if(!field.isEmpty() && field.getFigure().getColor() != currentPlayer.getColor() && currentPlayerHasThreeInARow){
+                if (currentMoveOptions.contains(field)) {
+                    currentMoveOptions.clear();
+                    field.removeFigure();
+                    currentPlayerHasThreeInARow = false;
+                    optionHighlightingRectangles.forEach(rect -> rect.setVisible(false));
+                    togglePlayer();
+                }
+            }
+
         });
 
         return field;
     }
 
-    private void highlightOptions(Field field){
+    private void checkForThreeInARow() {
+    }
+
+    private void togglePlayer(){
+        currentPlayer = players.get((players.indexOf(currentPlayer) + 1) % 2);
+    }
+
+    private void highlightMoveOptions(){
         Iterator<ResizableRectangle> rectangleIterator = optionHighlightingRectangles.iterator();
         optionHighlightingRectangles.forEach(rect -> rect.setVisible(false));
-        currentMoveOptions = Util.getMoveOptions(field);
         for (Field f : currentMoveOptions){
             ResizableRectangle resizableRectangle = rectangleIterator.next();
             resizableRectangle.xProperty().bind(f.xProperty());
